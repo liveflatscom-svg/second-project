@@ -1,0 +1,468 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Neon Snake Battle Arena</title>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: radial-gradient(circle at top, #25205c, #070b19);
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.container {
+  width: min(95%, 700px);
+  padding: 20px;
+}
+
+h1 {
+  color: #00f5ff;
+  text-shadow: 0 0 15px #00eaff;
+  font-size: clamp(25px, 5vw, 40px);
+}
+
+.subtitle {
+  color: #ff4de1;
+  letter-spacing: 5px;
+  font-size: 13px;
+}
+
+.scores {
+  display: flex;
+  justify-content: space-around;
+  flex-wrap: wrap;
+  gap: 10px;
+  background: #171b35;
+  padding: 15px;
+  border: 1px solid #494c88;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+
+.game-area {
+  position: relative;
+  border: 3px solid #00f5ff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 0 25px #00d9ff66;
+}
+
+canvas {
+  width: 100%;
+  display: block;
+  background: #090f20;
+}
+
+#message {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #080b1ccc;
+  color: white;
+  font-size: 23px;
+  font-weight: bold;
+  text-shadow: 0 0 12px #00ffff;
+  padding: 15px;
+}
+
+.controls {
+  margin: 20px;
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+button {
+  padding: 12px 22px;
+  border: none;
+  border-radius: 9px;
+  cursor: pointer;
+  color: #080b1c;
+  background: linear-gradient(120deg, #00f5ff, #a66cff);
+  font-weight: bold;
+  transition: .2s;
+}
+
+button:hover {
+  transform: scale(1.08);
+  box-shadow: 0 0 15px #00eaff;
+}
+
+.help {
+  color: #aeb9db;
+  font-size: 13px;
+}
+
+.mobile-controls {
+  display: none;
+  margin-top: 15px;
+}
+
+.mobile-controls button {
+  margin: 4px;
+  min-width: 55px;
+}
+
+@media(max-width:600px) {
+  .mobile-controls {
+    display: block;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>🐍 NEON SNAKE ARENA</h1>
+<p class="subtitle">PLAYER VS AI BATTLE</p>
+
+<div class="scores">
+  <div>🟢 PLAYER: <span id="playerScore">0</span></div>
+  <div>🔴 AI: <span id="aiScore">0</span></div>
+  <div>🏆 BEST: <span id="best">0</span></div>
+</div>
+
+<div class="game-area">
+  <canvas id="game" width="600" height="400"></canvas>
+  <div id="message">PRESS START TO PLAY</div>
+</div>
+
+<div class="controls">
+  <button onclick="startGame()">▶ START</button>
+  <button onclick="pauseGame()">⏸ PAUSE</button>
+  <button onclick="reset()">↻ RESTART</button>
+</div>
+
+<p class="help">Use Arrow Keys or WASD to control your snake.</p>
+
+<div class="mobile-controls">
+  <button onclick="changeDirection({x:0,y:-1})">▲</button>
+  <br>
+  <button onclick="changeDirection({x:-1,y:0})">◀</button>
+  <button onclick="changeDirection({x:0,y:1})">▼</button>
+  <button onclick="changeDirection({x:1,y:0})">▶</button>
+</div>
+
+</div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+
+const SIZE = 20;
+const COLS = 30;
+const ROWS = 20;
+
+let player, ai, food;
+let running = false;
+let timer;
+let score1 = 0;
+let score2 = 0;
+
+let direction = {x:1,y:0};
+let nextDirection = {x:1,y:0};
+
+let best = Number(localStorage.getItem("snakeBest") || 0);
+document.getElementById("best").textContent = best;
+
+function newSnake(x,y,color) {
+  return {
+    body: [
+      {x,y},
+      {x:x-1,y},
+      {x:x-2,y}
+    ],
+    color
+  };
+}
+
+function randomFood() {
+  let p;
+
+  do {
+    p = {
+      x:Math.floor(Math.random()*COLS),
+      y:Math.floor(Math.random()*ROWS)
+    };
+  } while (
+    player.body.some(s=>s.x===p.x && s.y===p.y) ||
+    ai.body.some(s=>s.x===p.x && s.y===p.y)
+  );
+
+  return p;
+}
+
+function reset() {
+  clearInterval(timer);
+
+  score1 = 0;
+  score2 = 0;
+
+  direction = {x:1,y:0};
+  nextDirection = {x:1,y:0};
+
+  player = newSnake(6,10,"#00f5ff");
+  ai = newSnake(23,10,"#ff3b81");
+
+  food = randomFood();
+
+  running = false;
+  updateScores();
+  showMessage("PRESS START TO PLAY");
+  draw();
+}
+
+function showMessage(text) {
+  document.getElementById("message").textContent = text;
+  document.getElementById("message").style.display = "grid";
+}
+
+function updateScores() {
+  document.getElementById("playerScore").textContent = score1;
+  document.getElementById("aiScore").textContent = score2;
+}
+
+function drawSnake(snake) {
+  snake.body.forEach((part,i)=>{
+    ctx.fillStyle = snake.color;
+    ctx.shadowColor = snake.color;
+    ctx.shadowBlur = 14;
+
+    ctx.beginPath();
+    ctx.roundRect(
+      part.x*SIZE+2,
+      part.y*SIZE+2,
+      SIZE-4,
+      SIZE-4,
+      6
+    );
+    ctx.fill();
+
+    if(i===0) {
+      ctx.fillStyle = "white";
+      ctx.shadowBlur = 0;
+      ctx.fillRect(part.x*SIZE+5,part.y*SIZE+6,4,4);
+      ctx.fillRect(part.x*SIZE+12,part.y*SIZE+6,4,4);
+    }
+  });
+
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  ctx.strokeStyle = "#182541";
+  ctx.lineWidth = 1;
+
+  for(let x=0;x<=canvas.width;x+=SIZE) {
+    ctx.beginPath();
+    ctx.moveTo(x,0);
+    ctx.lineTo(x,canvas.height);
+    ctx.stroke();
+  }
+
+  for(let y=0;y<=canvas.height;y+=SIZE) {
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    ctx.lineTo(canvas.width,y);
+    ctx.stroke();
+  }
+
+  // Food
+  ctx.fillStyle = "#ffe600";
+  ctx.shadowColor = "#ffe600";
+  ctx.shadowBlur = 20;
+
+  ctx.beginPath();
+  ctx.arc(
+    food.x*SIZE+10,
+    food.y*SIZE+10,
+    7,0,Math.PI*2
+  );
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  drawSnake(player);
+  drawSnake(ai);
+}
+
+function valid(p) {
+  return p.x>=0 && p.x<COLS &&
+         p.y>=0 && p.y<ROWS;
+}
+
+function collision(head,snake) {
+  return snake.body.slice(0,-1).some(
+    s=>s.x===head.x && s.y===head.y
+  );
+}
+
+function move(snake,dir,opponent) {
+  const head = {
+    x:snake.body[0].x+dir.x,
+    y:snake.body[0].y+dir.y
+  };
+
+  if(
+    !valid(head) ||
+    collision(head,snake) ||
+    opponent.body.some(s=>s.x===head.x && s.y===head.y)
+  ) {
+    return false;
+  }
+
+  snake.body.unshift(head);
+
+  if(head.x===food.x && head.y===food.y) {
+    if(snake===player) score1++;
+    else score2++;
+
+    food = randomFood();
+    updateScores();
+  } else {
+    snake.body.pop();
+  }
+
+  return true;
+}
+
+// AI opponent
+function chooseAI() {
+  const head = ai.body[0];
+
+  const options = [
+    {x:1,y:0},
+    {x:-1,y:0},
+    {x:0,y:1},
+    {x:0,y:-1}
+  ];
+
+  const safe = options.filter(d=>{
+    const p = {
+      x:head.x+d.x,
+      y:head.y+d.y
+    };
+
+    return valid(p) &&
+      !collision(p,ai) &&
+      !player.body.some(s=>s.x===p.x && s.y===p.y);
+  });
+
+  if(!safe.length) return {x:0,y:0};
+
+  safe.sort((a,b)=>{
+    const da =
+      Math.abs(head.x+a.x-food.x) +
+      Math.abs(head.y+a.y-food.y);
+
+    const db =
+      Math.abs(head.x+b.x-food.x) +
+      Math.abs(head.y+b.y-food.y);
+
+    return da-db;
+  });
+
+  return safe[0];
+}
+
+function gameOver(winner) {
+  running = false;
+  clearInterval(timer);
+
+  if(score1>best) {
+    best=score1;
+    localStorage.setItem("snakeBest",best);
+    document.getElementById("best").textContent=best;
+  }
+
+  showMessage(winner+" WINS! 🏆");
+}
+
+function tick() {
+  direction = nextDirection;
+
+  const aiDirection = chooseAI();
+
+  if(!move(player,direction,ai)) {
+    gameOver("AI");
+    draw();
+    return;
+  }
+
+  if(!move(ai,aiDirection,player)) {
+    gameOver("PLAYER");
+    draw();
+    return;
+  }
+
+  draw();
+}
+
+function startGame() {
+  if(running) return;
+
+  running = true;
+  document.getElementById("message").style.display="none";
+
+  timer = setInterval(tick,130);
+}
+
+function pauseGame() {
+  if(!running) return;
+
+  running = false;
+  clearInterval(timer);
+  showMessage("GAME PAUSED");
+}
+
+function changeDirection(d) {
+  if(
+    direction.x+d.x===0 &&
+    direction.y+d.y===0
+  ) return;
+
+  nextDirection=d;
+}
+
+document.addEventListener("keydown",e=>{
+  const keys = {
+    ArrowUp:{x:0,y:-1},
+    ArrowDown:{x:0,y:1},
+    ArrowLeft:{x:-1,y:0},
+    ArrowRight:{x:1,y:0},
+    w:{x:0,y:-1},
+    s:{x:0,y:1},
+    a:{x:-1,y:0},
+    d:{x:1,y:0}
+  };
+
+  if(keys[e.key]) {
+    e.preventDefault();
+    changeDirection(keys[e.key]);
+  }
+});
+
+reset();
+</script>
+
+</body>
+</html>
